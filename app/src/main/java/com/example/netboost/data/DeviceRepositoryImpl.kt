@@ -24,6 +24,7 @@ import androidx.core.content.ContextCompat
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.channels.awaitClose
 import java.net.Inet4Address
 
 /** Couche « Domain/Data » : accès unique aux API système. Toutes les méthodes lourdes sont des suspend. */
