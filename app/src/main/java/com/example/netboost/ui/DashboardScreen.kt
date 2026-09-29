@@ -1,5 +1,9 @@
 package com.example.netboost.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -10,8 +14,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -23,6 +32,11 @@ import javax.inject.Inject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+
+/** Le SSID du Wi-Fi n'est renvoyé par Android que si la localisation est autorisée. */
+private fun hasLocationPermission(ctx: android.content.Context): Boolean =
+    ContextCompat.checkSelfPermission(ctx, Manifest.permission.ACCESS_FINE_LOCATION) ==
+        PackageManager.PERMISSION_GRANTED
 
 data class DashboardState(
     val battery: BatteryInfo = BatteryInfo(), val ram: ResourceUsage = ResourceUsage(),
@@ -67,6 +81,14 @@ class DashboardViewModel @Inject constructor(
 @Composable
 fun DashboardScreen(vm: DashboardViewModel = hiltViewModel()) {
     val s by vm.state.collectAsStateWithLifecycle()
+    val ctx = LocalContext.current
+    var locationGranted by remember { mutableStateOf(hasLocationPermission(ctx)) }
+    // Revérifie au retour depuis les réglages système (permission accordée manuellement).
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { locationGranted = hasLocationPermission(ctx) }
+    val locationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        locationGranted = it
+    }
+
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item { OptimizeButton(s.optimizing, vm::optimize) }
         s.freedBytes?.let { item { Text("Mémoire libérée : ${formatBytes(it)}", style = MaterialTheme.typography.titleSmall) } }
@@ -82,10 +104,20 @@ fun DashboardScreen(vm: DashboardViewModel = hiltViewModel()) {
             ), warning = if (s.tempAlert) "⚠ Température supérieure au seuil défini" else null)
         }
         item {
-            InfoCard("Réseau", listOf(
-                "Type" to s.network.type, "SSID" to (s.network.ssid ?: "—"),
-                "Signal" to (s.network.signalDbm?.let { "$it dBm" } ?: "—"), "Adresse IP" to s.network.ip
-            ))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                InfoCard("Réseau", listOf(
+                    "Type" to s.network.type, "SSID" to (s.network.ssid ?: "—"),
+                    "Signal" to (s.network.signalDbm?.let { "$it dBm" } ?: "—"), "Adresse IP" to s.network.ip
+                ))
+                // Le SSID reste masqué tant que la localisation n'est pas autorisée : la mise à jour
+                // automatique (toutes les 5 s) le révélera dès que la permission sera accordée.
+                if (!locationGranted && s.network.type == "Wi-Fi") {
+                    OutlinedButton(
+                        onClick = { locationLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Autoriser la localisation (afficher le nom du Wi-Fi)") }
+                }
+            }
         }
     }
 }
@@ -128,7 +160,8 @@ fun InfoCard(title: String, rows: List<Pair<String, String>>, warning: String? =
             warning?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             rows.forEach { (k, v) ->
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text(k, color = MaterialTheme.colorScheme.onSurfaceVariant); Text(v)
+                    Text(k, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(v, modifier = Modifier.weight(1f).padding(start = 12.dp), textAlign = TextAlign.End)
                 }
             }
         }
