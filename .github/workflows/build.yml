@@ -16,8 +16,6 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: android-actions/setup-android@v3
-
       - uses: gradle/actions/setup-gradle@v4
 
       # Le projet n'a pas de gradlew (généré normalement par Android Studio),
